@@ -23,6 +23,8 @@ module Control.Pattern (
 , eq
 , matches
 , match
+, nDerivations
+, derivation
 , Substitution(..)
 , unify
   -- * Semirings
@@ -34,6 +36,7 @@ module Control.Pattern (
 
 import Control.Applicative
 import Control.Monad
+import Data.Functor.Foldable
 import qualified Data.Map as M
 import Data.Void
 import GHC.Generics
@@ -113,8 +116,8 @@ instance (SemiringZippy f, SemiringZippy g) => SemiringZippy (f :*: g) where
   together z (x1 :*: x2) (y1 :*: y2) = together z x1 y1 .*. together z x2 y2
 
 -- Equality
-newtype Fix f = Fix { unFix :: f (Fix f) }
-deriving instance (Show (f (Fix f))) => Show (Fix f)
+-- newtype Fix f = Fix { unFix :: f (Fix f) }
+-- deriving instance (Show (f (Fix f))) => Show (Fix f)
 
 instance Semiring Bool where
   (.+.) = (||)
@@ -130,16 +133,16 @@ eq (Fix x) (Fix y) = together eq x y
 
 -- But if you generalize over semiring, you get
 matches :: SemiringZippy f => Pattern f c Void -> Fix f -> Bool
-matches = pat (\_ _ -> True)
+matches = pat (\_ _ -> id)
 
 pat :: (Semiring s, SemiringZippy f)
-    => (c -> Fix f -> s) -> Pattern f c Void -> Fix f -> s
+    => (c -> Fix f -> s -> s) -> Pattern f c Void -> Fix f -> s
 pat c (Pattern ps) t = foldPlus $ map (\p -> pat' c p t) ps
 pat' :: (Semiring s, SemiringZippy f)
-     => (c -> Fix f -> s) -> Pattern' f c Void -> Fix f -> s
+     => (c -> Fix f -> s -> s) -> Pattern' f c Void -> Fix f -> s
 pat' _ (Hole _)      _ = error "Matching only works on closed patterns"
 pat' c (In p)  (Fix t) = together (pat c) p t
-pat' c (Capture v p) t = c v t .*. pat c p t
+pat' c (Capture v p) t = c v t (pat c p t)  -- folding over this constructor
 pat' _ CatchAll      _ = one
 
 instance (Ord k, Monoid v) => Semiring (Maybe (M.Map k v)) where
@@ -152,7 +155,43 @@ instance (Ord k, Monoid v) => Semiring (Maybe (M.Map k v)) where
 
 match :: (Ord c, SemiringZippy f)
       => Pattern f c Void -> Fix f -> Maybe (M.Map c [Fix f])
-match = pat (\v t -> Just (M.singleton v [t]))
+match = pat (\v t s -> Just (M.singleton v [t]) .*. s)
+
+instance Semiring Integer where
+  (.+.) = (+)
+  (.*.) = (*)
+  zero  = 0
+  one   = 1
+
+nDerivations :: SemiringZippy f
+             => Pattern f c Void -> Fix f -> Integer
+nDerivations = pat (\_ _ -> id)
+
+data Derivation = Branch Integer Derivation
+                | Args [Derivation]
+                | None
+                deriving Show
+
+instance Semiring Derivation where
+  None         .+. None       = None
+  None         .+. Branch m e = Branch (m+1) e
+  None         .+. Args es    = Branch 1 (Args es)
+  (Branch n d) .+. _          = Branch n d
+  Args ds      .+. _          = Branch 0 (Args ds)
+
+  None         .*. _          = None
+  _            .*. None       = None
+  Args ds      .*. Args es    = Args (ds ++ es)
+  b@(Branch _ _) .*. Args es  = Args (b : es)
+  Args ds  .*. b@(Branch _ _) = Args (ds ++ [b])
+  b            .*. c          = Args [b,c]
+
+  zero = None
+  one  = Args []
+
+derivation :: SemiringZippy f
+           => Pattern f c Void -> Fix f -> Derivation
+derivation = pat (\_ _ -> id)
 
 
 data Substitution k v = Fail | Substitution (M.Map k v)
@@ -175,10 +214,10 @@ instance (Ord k, SemiringZippy f) => Semiring (Substitution k (Pattern f Void k)
   _                .*. _                = Fail
 
 ppat :: (Ord k, Semiring s, SemiringZippy f)
-     => (k -> Pattern f c k -> s) -> Pattern f c k -> Pattern f c k -> s
+     => (k -> Pattern f Void k -> s) -> Pattern f Void k -> Pattern f Void k -> s
 ppat c (Pattern ps) (Pattern ts) = foldPlus $ [ppat' c p t | p <- ps, t <- ts]
 ppat' :: (Ord k, Semiring s, SemiringZippy f)
-      => (k -> Pattern f c k -> s) -> Pattern' f c k -> Pattern' f c k -> s
+      => (k -> Pattern f Void k -> s) -> Pattern' f Void k -> Pattern' f Void k -> s
 ppat' _ (Capture _ _) _ = error "Capture is not allowed here"
 ppat' _ _ (Capture _ _) = error "Capture is not allowed here"
 ppat' _ CatchAll      _ = error "Catch-all is not allowed here"

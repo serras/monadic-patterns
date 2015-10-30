@@ -6,18 +6,25 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
-module Control.Pattern.Free where
+module Control.Pattern.Free (
+  Pattern
+, ClosedPattern
+, Fix(..)
+, Matchable
+, matches
+) where
 
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.Trans.Free
+import Data.Functor.Foldable
 import Data.Void
 import GHC.Generics
 
 type Pattern (f :: * -> *) = FreeT f []
 type ClosedPattern f = Pattern f Void
 
-newtype Fix f = Fix { unFix :: f (Fix f) }
+-- newtype Fix f = Fix { unFix :: f (Fix f) }
 
 type Matchable f = (Generic1 f, MatchesG (Rep1 f))
 

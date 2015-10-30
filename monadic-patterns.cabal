@@ -10,12 +10,14 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Control.Pattern,
-                       Control.Pattern.Free
+                       Control.Pattern.Free,
+                       Control.Pattern.Automata
   -- other-modules:
   -- other-extensions:
   build-depends:       base >= 4.8  && < 5,
                        free >= 4.12 && < 5,
-                       containers
+                       containers,
+                       recursion-schemes >= 4
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall

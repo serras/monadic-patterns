@@ -1,6 +1,7 @@
-resolver: lts-3.10
+resolver: lts-3.11
 packages:
 - '.'
-extra-deps: []
+extra-deps:
+- recursion-schemes-4.1.2
 flags: {}
 extra-package-dbs: []
